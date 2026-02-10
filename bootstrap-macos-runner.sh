@@ -103,11 +103,14 @@ if ! xcrun simctl list devicetypes | grep -Fq "${REQUIRED_SIM_DEVICE_TYPE}"; the
   die "Simulator device type '${REQUIRED_SIM_DEVICE_TYPE}' not found in this Xcode. Check Xcode version/components."
 fi
 
-runtime_identifier="$(xcrun simctl list runtimes | awk -v rt="${REQUIRED_IOS_SIM_RUNTIME_NAME}" '
-  $0 ~ rt {
-    match($0, /com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9\.\-]+/)
-    if (RSTART > 0) { print substr($0, RSTART, RLENGTH); exit }
-  }')"
+get_runtime_id() {
+  xcrun simctl list runtimes \
+    | grep -F "${REQUIRED_IOS_SIM_RUNTIME_NAME}" \
+    | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9.\-]+' \
+    | head -n1
+}
+
+runtime_identifier="$(get_runtime_id)"
 
 if [[ -z "${runtime_identifier}" ]]; then
   log "Runtime '${REQUIRED_IOS_SIM_RUNTIME_NAME}' not installed yet."
@@ -120,11 +123,7 @@ if [[ -z "${runtime_identifier}" ]]; then
     rc=$?
     set -e
 
-    runtime_identifier="$(xcrun simctl list runtimes | awk -v rt="${REQUIRED_IOS_SIM_RUNTIME_NAME}" '
-      $0 ~ rt {
-        match($0, /com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9\.\-]+/)
-        if (RSTART > 0) { print substr($0, RSTART, RLENGTH); exit }
-      }')"
+    runtime_identifier="$(get_runtime_id)"
   fi
 
   if [[ -z "${runtime_identifier}" ]]; then
@@ -133,11 +132,7 @@ if [[ -z "${runtime_identifier}" ]]; then
       [[ -f "${IOS_RUNTIME_DMG_PATH}" ]] || die "IOS_RUNTIME_DMG_PATH does not exist: ${IOS_RUNTIME_DMG_PATH}"
       xcrun simctl runtime add "${IOS_RUNTIME_DMG_PATH}"
 
-      runtime_identifier="$(xcrun simctl list runtimes | awk -v rt="${REQUIRED_IOS_SIM_RUNTIME_NAME}" '
-        $0 ~ rt {
-          match($0, /com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9\.\-]+/)
-          if (RSTART > 0) { print substr($0, RSTART, RLENGTH); exit }
-        }')"
+      runtime_identifier="$(get_runtime_id)"
     fi
   fi
 
