@@ -215,6 +215,11 @@ brew install rbenv ruby-build openssl@1.1 || true
 export PATH="$HOME/.rbenv/bin:$PATH"
 eval "$(rbenv init - bash)"
 
+# Fail fast if rbenv shims are not active
+if [[ "$(command -v ruby)" != "$HOME/.rbenv/shims/ruby" ]]; then
+  die "rbenv is not active: ruby resolves to '$(command -v ruby)'"
+fi
+
 if ! rbenv versions --bare | grep -Fxq "${REQUIRED_RUBY_VERSION}"; then
   OPENSSL_DIR="$(brew --prefix openssl@1.1)"
   RUBY_CONFIGURE_OPTS="--with-openssl-dir=${OPENSSL_DIR} --disable-shared" \
@@ -224,9 +229,10 @@ fi
 rbenv global "${REQUIRED_RUBY_VERSION}"
 rbenv rehash
 
-ACTUAL_RUBY_VERSION="$(rbenv version-name)"
+# Validate actual runtime, not just rbenv's selection
+ACTUAL_RUBY_VERSION="$(ruby -v | awk '{print $2}')"
 [[ "${ACTUAL_RUBY_VERSION}" == "${REQUIRED_RUBY_VERSION}" ]] \
-  || die "Ruby version mismatch: expected ${REQUIRED_RUBY_VERSION}, got ${ACTUAL_RUBY_VERSION}"
+  || die "Ruby runtime mismatch: expected ${REQUIRED_RUBY_VERSION}, got ${ACTUAL_RUBY_VERSION}"
 log "Ruby OK: ${ACTUAL_RUBY_VERSION}"
 
 # ==================================================
