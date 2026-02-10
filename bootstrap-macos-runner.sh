@@ -30,17 +30,24 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 # 1) Homebrew (official installer)
 # ==================================================
 log "Ensuring Homebrew is installed..."
-if ! command_exists brew; then
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-fi
 
 # Ensure brew is on PATH (Apple Silicon + Intel)
 if [[ -x /opt/homebrew/bin/brew ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 elif [[ -x /usr/local/bin/brew ]]; then
   eval "$(/usr/local/bin/brew shellenv)"
-else
-  die "Homebrew installed but brew not found on PATH"
+fi
+
+if ! command_exists brew; then
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  # Set up PATH after fresh install
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  else
+    die "Homebrew installed but brew not found on PATH"
+  fi
 fi
 
 brew update
