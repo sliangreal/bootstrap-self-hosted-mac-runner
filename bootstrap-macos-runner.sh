@@ -206,7 +206,7 @@ eval "$(rbenv init - bash)"
 
 if ! rbenv versions --bare | grep -Fxq "${REQUIRED_RUBY_VERSION}"; then
   OPENSSL_DIR="$(brew --prefix openssl@1.1)"
-  RUBY_CONFIGURE_OPTS="--with-openssl-dir=${OPENSSL_DIR}" \
+  RUBY_CONFIGURE_OPTS="--with-openssl-dir=${OPENSSL_DIR} --disable-shared" \
     rbenv install "${REQUIRED_RUBY_VERSION}"
 fi
 
