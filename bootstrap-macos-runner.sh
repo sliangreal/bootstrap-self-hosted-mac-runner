@@ -46,31 +46,40 @@ fi
 brew update
 
 # ==================================================
-# Xcode install (non-interactive via xcodes)
+# Xcode install (skip xcodes if already present)
 # ==================================================
 log "Ensuring Xcode ${REQUIRED_XCODE_VERSION} is installed..."
 
-# xcodes README: you can provide Apple ID creds via XCODES_USERNAME / XCODES_PASSWORD
-# (xcodes stores the password in keychain after successful auth).
-if [[ -z "${XCODE_APPLE_ID:-}" || -z "${XCODE_APPLE_ID_PASSWORD:-}" ]]; then
-  die "Xcode install requires XCODE_APPLE_ID and XCODE_APPLE_ID_PASSWORD env vars"
-fi
-export XCODES_USERNAME="${XCODE_APPLE_ID}"
-export XCODES_PASSWORD="${XCODE_APPLE_ID_PASSWORD}"
-
-# Install xcodes if missing
-if ! command_exists xcodes; then
-  log "Installing xcodes..."
-  brew install xcodesorg/made/xcodes
+XCODE_ALREADY_INSTALLED=false
+if command_exists xcodebuild; then
+  CURRENT_XCODE_VERSION="$(xcodebuild -version 2>/dev/null | head -n1 | awk '{print $2}' || true)"
+  if [[ "${CURRENT_XCODE_VERSION}" == "${REQUIRED_XCODE_VERSION}" ]]; then
+    log "Xcode ${REQUIRED_XCODE_VERSION} is already installed — skipping xcodes"
+    XCODE_ALREADY_INSTALLED=true
+  fi
 fi
 
-# Install Xcode if missing (xcodes will prompt unless env vars are set)
-if ! xcodes installed | grep -q "^${REQUIRED_XCODE_VERSION}\b"; then
-  log "Downloading and installing Xcode ${REQUIRED_XCODE_VERSION}..."
-  xcodes install "${REQUIRED_XCODE_VERSION}" --select
-else
-  log "Xcode ${REQUIRED_XCODE_VERSION} already installed"
-  xcodes select "${REQUIRED_XCODE_VERSION}"
+if [[ "${XCODE_ALREADY_INSTALLED}" == false ]]; then
+  # xcodes README: you can provide Apple ID creds via XCODES_USERNAME / XCODES_PASSWORD
+  if [[ -z "${XCODE_APPLE_ID:-}" || -z "${XCODE_APPLE_ID_PASSWORD:-}" ]]; then
+    die "Xcode install requires XCODE_APPLE_ID and XCODE_APPLE_ID_PASSWORD env vars"
+  fi
+  export XCODES_USERNAME="${XCODE_APPLE_ID}"
+  export XCODES_PASSWORD="${XCODE_APPLE_ID_PASSWORD}"
+
+  # Install xcodes if missing
+  if ! command_exists xcodes; then
+    log "Installing xcodes..."
+    brew install xcodesorg/made/xcodes
+  fi
+
+  if ! xcodes installed | grep -q "^${REQUIRED_XCODE_VERSION}\b"; then
+    log "Downloading and installing Xcode ${REQUIRED_XCODE_VERSION}..."
+    xcodes install "${REQUIRED_XCODE_VERSION}" --select
+  else
+    log "Xcode ${REQUIRED_XCODE_VERSION} already installed"
+    xcodes select "${REQUIRED_XCODE_VERSION}"
+  fi
 fi
 
 # Accept license (required for xcodebuild, CocoaPods, etc.)
@@ -103,22 +112,24 @@ runtime_identifier="$(xcrun simctl list runtimes | awk -v rt="${REQUIRED_IOS_SIM
 if [[ -z "${runtime_identifier}" ]]; then
   log "Runtime '${REQUIRED_IOS_SIM_RUNTIME_NAME}' not installed yet."
 
-  # First try: xcodes runtimes install (may fail for iOS 18.x depending on Apple changes)
-  log "Attempting to install runtime via xcodes..."
-  set +e
-  xcodes runtimes install "${REQUIRED_IOS_SIM_RUNTIME_NAME}"
-  rc=$?
-  set -e
+  # First try: xcodes runtimes install (only if xcodes is available)
+  if command_exists xcodes; then
+    log "Attempting to install runtime via xcodes..."
+    set +e
+    xcodes runtimes install "${REQUIRED_IOS_SIM_RUNTIME_NAME}"
+    rc=$?
+    set -e
 
-  runtime_identifier="$(xcrun simctl list runtimes | awk -v rt="${REQUIRED_IOS_SIM_RUNTIME_NAME}" '
-    $0 ~ rt {
-      match($0, /com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9\.\-]+/)
-      if (RSTART > 0) { print substr($0, RSTART, RLENGTH); exit }
-    }')"
+    runtime_identifier="$(xcrun simctl list runtimes | awk -v rt="${REQUIRED_IOS_SIM_RUNTIME_NAME}" '
+      $0 ~ rt {
+        match($0, /com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9\.\-]+/)
+        if (RSTART > 0) { print substr($0, RSTART, RLENGTH); exit }
+      }')"
+  fi
 
   if [[ -z "${runtime_identifier}" ]]; then
     if [[ -n "${IOS_RUNTIME_DMG_PATH}" ]]; then
-      log "xcodes runtime install did not yield '${REQUIRED_IOS_SIM_RUNTIME_NAME}'. Trying simctl runtime add from DMG: ${IOS_RUNTIME_DMG_PATH}"
+      log "Trying simctl runtime add from DMG: ${IOS_RUNTIME_DMG_PATH}"
       [[ -f "${IOS_RUNTIME_DMG_PATH}" ]] || die "IOS_RUNTIME_DMG_PATH does not exist: ${IOS_RUNTIME_DMG_PATH}"
       xcrun simctl runtime add "${IOS_RUNTIME_DMG_PATH}"
 
