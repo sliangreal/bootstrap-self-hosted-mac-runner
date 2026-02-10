@@ -213,7 +213,7 @@ fi
 rbenv global "${REQUIRED_RUBY_VERSION}"
 rbenv rehash
 
-ACTUAL_RUBY_VERSION="$(ruby -v | awk '{print $2}')"
+ACTUAL_RUBY_VERSION="$(rbenv version-name)"
 [[ "${ACTUAL_RUBY_VERSION}" == "${REQUIRED_RUBY_VERSION}" ]] \
   || die "Ruby version mismatch: expected ${REQUIRED_RUBY_VERSION}, got ${ACTUAL_RUBY_VERSION}"
 log "Ruby OK: ${ACTUAL_RUBY_VERSION}"
