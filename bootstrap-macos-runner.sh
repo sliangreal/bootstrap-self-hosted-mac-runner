@@ -147,11 +147,10 @@ fi
 log "Runtime OK: ${runtime_identifier}"
 
 # Create (or reuse) the CI simulator device
-existing_udid="$(xcrun simctl list devices "${runtime_identifier}" | awk -v name="${CI_SIM_NAME}" '
-  $0 ~ name {
-    match($0, /\(([0-9A-Fa-f-]{36})\)/, m)
-    if (m[1] != "") { print m[1]; exit }
-  }')"
+existing_udid="$(xcrun simctl list devices "${runtime_identifier}" \
+  | grep -F "${CI_SIM_NAME}" \
+  | grep -oE '[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}' \
+  | head -n1)"
 
 if [[ -z "${existing_udid}" ]]; then
   log "Creating simulator '${CI_SIM_NAME}' (${REQUIRED_SIM_DEVICE_TYPE} / ${REQUIRED_IOS_SIM_RUNTIME_NAME})..."
