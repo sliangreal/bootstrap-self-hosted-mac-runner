@@ -67,10 +67,14 @@ if [[ "${XCODE_ALREADY_INSTALLED}" == false ]]; then
   export XCODES_USERNAME="${XCODE_APPLE_ID}"
   export XCODES_PASSWORD="${XCODE_APPLE_ID_PASSWORD}"
 
-  # Install xcodes if missing
+  # Install xcodes if missing (use pre-built binary — brew formula requires
+  # Xcode to compile from source, which defeats the purpose)
   if ! command_exists xcodes; then
-    log "Installing xcodes..."
-    brew install xcodesorg/made/xcodes
+    log "Installing xcodes (pre-built binary)..."
+    curl -sL "https://github.com/XcodesOrg/xcodes/releases/latest/download/xcodes.zip" -o /tmp/xcodes.zip
+    unzip -o /tmp/xcodes.zip -d /usr/local/bin
+    chmod +x /usr/local/bin/xcodes
+    rm -f /tmp/xcodes.zip
   fi
 
   if ! xcodes installed | grep -q "^${REQUIRED_XCODE_VERSION}\b"; then
