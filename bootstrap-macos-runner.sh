@@ -111,7 +111,7 @@ get_runtime_id() {
   xcrun simctl list runtimes \
     | grep -F "${REQUIRED_IOS_SIM_RUNTIME_NAME}" \
     | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9.\-]+' \
-    | head -n1
+    | head -n1 || true
 }
 
 runtime_identifier="$(get_runtime_id)"
