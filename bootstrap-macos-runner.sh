@@ -36,6 +36,52 @@ fi
 brew update
 
 # ==================================================
+# Xcode install (non-interactive via xcodes)
+# ==================================================
+REQUIRED_XCODE_VERSION="16.4"
+
+log "Ensuring Xcode ${REQUIRED_XCODE_VERSION} is installed..."
+
+if [[ -z "${XCODE_APPLE_ID:-}" || -z "${XCODE_APPLE_ID_PASSWORD:-}" ]]; then
+  die "Xcode install requires XCODE_APPLE_ID and XCODE_APPLE_ID_PASSWORD env vars"
+fi
+
+# Install xcodes if missing
+if ! command -v xcodes >/dev/null 2>&1; then
+  log "Installing xcodes..."
+  brew install xcodes
+fi
+
+# Authenticate (non-interactive)
+log "Authenticating with Apple Developer account..."
+xcodes auth login \
+  --apple-id "${XCODE_APPLE_ID}" \
+  --password "${XCODE_APPLE_ID_PASSWORD}" \
+  --non-interactive
+
+# Install Xcode if missing
+if ! xcodes installed | grep -q "^${REQUIRED_XCODE_VERSION}\b"; then
+  log "Downloading and installing Xcode ${REQUIRED_XCODE_VERSION}..."
+  xcodes install "${REQUIRED_XCODE_VERSION}" --select
+else
+  log "Xcode ${REQUIRED_XCODE_VERSION} already installed"
+  xcodes select "${REQUIRED_XCODE_VERSION}"
+fi
+
+# Accept license (required for xcodebuild, CocoaPods, etc.)
+sudo xcodebuild -license accept
+
+# ==================================================
+# Validate Xcode version (FAIL FAST)
+# ==================================================
+ACTUAL_XCODE_VERSION="$(xcodebuild -version | head -n1 | awk '{print $2}')"
+
+[[ "${ACTUAL_XCODE_VERSION}" == "${REQUIRED_XCODE_VERSION}" ]] \
+  || die "Xcode version mismatch: expected ${REQUIRED_XCODE_VERSION}, got ${ACTUAL_XCODE_VERSION}"
+
+log "Xcode OK: ${ACTUAL_XCODE_VERSION}"
+
+# ==================================================
 # 2) NVM + Node.js (official installer)
 # ==================================================
 log "Installing NVM (${NVM_VERSION})..."
