@@ -142,10 +142,12 @@ fi
 log "Runtime OK: ${runtime_identifier}"
 
 # Create (or reuse) the CI simulator device
+set +eo pipefail
 existing_udid="$(xcrun simctl list devices "${runtime_identifier}" \
   | grep -F "${CI_SIM_NAME}" \
   | grep -oE '[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}' \
-  | head -n1 || true)"
+  | head -n1)"
+set -eo pipefail
 
 if [[ -z "${existing_udid}" ]]; then
   log "Creating simulator '${CI_SIM_NAME}' (${REQUIRED_SIM_DEVICE_TYPE} / ${REQUIRED_IOS_SIM_RUNTIME_NAME})..."
