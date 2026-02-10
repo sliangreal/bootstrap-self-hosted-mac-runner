@@ -72,9 +72,9 @@ if [[ "${XCODE_ALREADY_INSTALLED}" == false ]]; then
   if ! command_exists xcodes; then
     log "Installing xcodes (pre-built binary)..."
     curl -sL "https://github.com/XcodesOrg/xcodes/releases/latest/download/xcodes.zip" -o /tmp/xcodes.zip
-    unzip -o /tmp/xcodes.zip -d /usr/local/bin
-    chmod +x /usr/local/bin/xcodes
-    rm -f /tmp/xcodes.zip
+    unzip -o /tmp/xcodes.zip -d /tmp
+    install -m 755 /tmp/xcodes "$(brew --prefix)/bin/xcodes"
+    rm -f /tmp/xcodes.zip /tmp/xcodes
   fi
 
   if ! xcodes installed | grep -q "^${REQUIRED_XCODE_VERSION}\b"; then
