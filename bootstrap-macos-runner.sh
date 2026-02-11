@@ -152,28 +152,21 @@ fi
 
 log "Runtime OK: ${runtime_identifier}"
 
-# Create (or reuse) the CI simulator device
-set +eo pipefail
-existing_udid="$(xcrun simctl list devices "${runtime_identifier}" \
-  | grep -F "${CI_SIM_NAME}" \
+# Boot the default simulator once to warm it up
+default_udid="$(xcrun simctl list devices "${runtime_identifier}" \
+  | grep "${REQUIRED_SIM_DEVICE_TYPE}" \
   | grep -oE '[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}' \
   | head -n1)"
-set -eo pipefail
 
-if [[ -z "${existing_udid}" ]]; then
-  log "Creating simulator '${CI_SIM_NAME}' (${REQUIRED_SIM_DEVICE_TYPE} / ${REQUIRED_IOS_SIM_RUNTIME_NAME})..."
-  sim_udid="$(xcrun simctl create "${CI_SIM_NAME}" "${REQUIRED_SIM_DEVICE_TYPE}" "${runtime_identifier}")"
+if [[ -n "${default_udid}" ]]; then
+  log "Warming up default simulator: ${REQUIRED_SIM_DEVICE_TYPE} (${default_udid})..."
+  xcrun simctl boot "${default_udid}" || true
+  xcrun simctl bootstatus "${default_udid}" -b
+  xcrun simctl shutdown "${default_udid}" || true
+  log "Simulator ready: ${default_udid}"
 else
-  sim_udid="${existing_udid}"
-  log "Simulator already exists: ${CI_SIM_NAME} (${sim_udid})"
+  log "Warning: No ${REQUIRED_SIM_DEVICE_TYPE} simulator found for ${REQUIRED_IOS_SIM_RUNTIME_NAME}"
 fi
-
-# Boot once to warm it up (helps reduce first-run flake)
-log "Booting simulator ${sim_udid}..."
-xcrun simctl boot "${sim_udid}" || true
-xcrun simctl bootstatus "${sim_udid}" -b
-xcrun simctl shutdown "${sim_udid}" || true
-log "Simulator ready: ${CI_SIM_NAME} (${sim_udid})"
 
 # ==================================================
 # 2) NVM + Node.js (official installer)
