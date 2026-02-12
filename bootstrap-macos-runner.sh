@@ -154,7 +154,7 @@ log "Runtime OK: ${runtime_identifier}"
 
 # Boot the default simulator once to warm it up
 set +eo pipefail
-default_udid="$(xcrun simctl list devices "${runtime_identifier}" \
+default_udid="$(xcrun simctl list devices \
   | grep "${REQUIRED_SIM_DEVICE_TYPE}" \
   | grep -oE '[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}' \
   | head -n1)"
