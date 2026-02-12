@@ -228,11 +228,6 @@ export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$PATH"
 eval "$(rbenv init - bash)"
 rbenv rehash 2>/dev/null || true
 
-# Fail fast if rbenv shims are not active
-if [[ "$(command -v ruby)" != "$HOME/.rbenv/shims/ruby" ]]; then
-  die "rbenv is not active: ruby resolves to '$(command -v ruby)'"
-fi
-
 if ! rbenv versions --bare | grep -Fxq "${REQUIRED_RUBY_VERSION}"; then
   log "Installing Ruby ${REQUIRED_RUBY_VERSION} (this may take a while)..."
   OPENSSL_DIR="$(brew --prefix openssl@1.1)"
@@ -256,7 +251,11 @@ for rcfile in "$HOME/.zshrc" "$HOME/.zprofile"; do
   fi
 done
 
-# Validate actual runtime, not just rbenv's selection
+# Validate rbenv shims are active and correct version is running
+if [[ "$(command -v ruby)" != "$HOME/.rbenv/shims/ruby" ]]; then
+  die "rbenv is not active: ruby resolves to '$(command -v ruby)'"
+fi
+
 ACTUAL_RUBY_VERSION="$(ruby -v | awk '{print $2}')"
 [[ "${ACTUAL_RUBY_VERSION}" == "${REQUIRED_RUBY_VERSION}" ]] \
   || die "Ruby runtime mismatch: expected ${REQUIRED_RUBY_VERSION}, got ${ACTUAL_RUBY_VERSION}"
