@@ -246,11 +246,13 @@ rbenv global "${REQUIRED_RUBY_VERSION}"
 rbenv rehash
 
 # Ensure rbenv is available in future zsh sessions (GitHub Actions runner shell)
+RBENV_PATH_LINE='export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$PATH"'
 RBENV_INIT='eval "$(rbenv init - zsh)"'
 for rcfile in "$HOME/.zshrc" "$HOME/.zprofile"; do
-  if ! grep -Fq 'rbenv init' "${rcfile}" 2>/dev/null; then
+  if ! grep -Fq '.rbenv' "${rcfile}" 2>/dev/null; then
+    echo "${RBENV_PATH_LINE}" >> "${rcfile}"
     echo "${RBENV_INIT}" >> "${rcfile}"
-    log "Added rbenv init to ${rcfile}"
+    log "Added rbenv PATH and init to ${rcfile}"
   fi
 done
 
