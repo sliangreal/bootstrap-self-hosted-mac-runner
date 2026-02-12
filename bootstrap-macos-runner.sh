@@ -257,7 +257,7 @@ if [[ "$(command -v ruby)" != "$HOME/.rbenv/shims/ruby" ]]; then
 fi
 
 ACTUAL_RUBY_VERSION="$(ruby -v | awk '{print $2}')"
-[[ "${ACTUAL_RUBY_VERSION}" == "${REQUIRED_RUBY_VERSION}" ]] \
+[[ "${ACTUAL_RUBY_VERSION}" == "${REQUIRED_RUBY_VERSION}"* ]] \
   || die "Ruby runtime mismatch: expected ${REQUIRED_RUBY_VERSION}, got ${ACTUAL_RUBY_VERSION}"
 log "Ruby OK: ${ACTUAL_RUBY_VERSION}"
 
