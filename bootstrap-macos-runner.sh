@@ -171,8 +171,10 @@ fi
 # ==================================================
 # 2) NVM + Node.js (official installer)
 # ==================================================
-log "Installing NVM (${NVM_VERSION})..."
+log "Ensuring NVM and Node ${REQUIRED_NODE_VERSION}..."
+
 if [[ ! -d "$HOME/.nvm" ]]; then
+  log "Installing NVM (${NVM_VERSION})..."
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
 fi
 
@@ -180,30 +182,45 @@ export NVM_DIR="$HOME/.nvm"
 # shellcheck disable=SC1090
 source "$NVM_DIR/nvm.sh"
 
-log "Installing Node ${REQUIRED_NODE_VERSION}..."
-nvm install "${REQUIRED_NODE_VERSION}"
-nvm alias default "${REQUIRED_NODE_VERSION}"
-nvm use "${REQUIRED_NODE_VERSION}"
+ACTUAL_NODE_VERSION="$(node -v 2>/dev/null | sed 's/^v//' || true)"
+if [[ "${ACTUAL_NODE_VERSION}" == "${REQUIRED_NODE_VERSION}" ]]; then
+  log "Node already at ${REQUIRED_NODE_VERSION} — skipping"
+else
+  log "Installing Node ${REQUIRED_NODE_VERSION}..."
+  nvm install "${REQUIRED_NODE_VERSION}"
+  nvm alias default "${REQUIRED_NODE_VERSION}"
+  nvm use "${REQUIRED_NODE_VERSION}"
 
-ACTUAL_NODE_VERSION="$(node -v | sed 's/^v//')"
-[[ "${ACTUAL_NODE_VERSION}" == "${REQUIRED_NODE_VERSION}" ]] \
-  || die "Node version mismatch: expected ${REQUIRED_NODE_VERSION}, got ${ACTUAL_NODE_VERSION}"
+  ACTUAL_NODE_VERSION="$(node -v | sed 's/^v//')"
+  [[ "${ACTUAL_NODE_VERSION}" == "${REQUIRED_NODE_VERSION}" ]] \
+    || die "Node version mismatch: expected ${REQUIRED_NODE_VERSION}, got ${ACTUAL_NODE_VERSION}"
+fi
 log "Node OK: ${ACTUAL_NODE_VERSION}"
 
 # ==================================================
 # 3) applesimutils (MUST be before Ruby)
 # ==================================================
-log "Installing applesimutils..."
-brew tap wix/brew
-brew install applesimutils
-command_exists applesimutils || die "applesimutils installation failed"
+log "Ensuring applesimutils..."
+if command_exists applesimutils; then
+  log "applesimutils already installed — skipping"
+else
+  brew tap wix/brew
+  brew install applesimutils
+  command_exists applesimutils || die "applesimutils installation failed"
+fi
 log "applesimutils OK"
 
 # ==================================================
 # 4) Ruby via rbenv
 # ==================================================
-log "Installing rbenv and ruby-build..."
-brew install rbenv ruby-build openssl@1.1 || true
+log "Ensuring rbenv and Ruby ${REQUIRED_RUBY_VERSION}..."
+
+if ! command_exists rbenv; then
+  log "Installing rbenv and ruby-build..."
+  brew install rbenv ruby-build openssl@1.1 || true
+else
+  log "rbenv already installed — skipping brew install"
+fi
 
 export PATH="$HOME/.rbenv/bin:$PATH"
 eval "$(rbenv init - bash)"
@@ -214,9 +231,12 @@ if [[ "$(command -v ruby)" != "$HOME/.rbenv/shims/ruby" ]]; then
 fi
 
 if ! rbenv versions --bare | grep -Fxq "${REQUIRED_RUBY_VERSION}"; then
+  log "Installing Ruby ${REQUIRED_RUBY_VERSION} (this may take a while)..."
   OPENSSL_DIR="$(brew --prefix openssl@1.1)"
   RUBY_CONFIGURE_OPTS="--with-openssl-dir=${OPENSSL_DIR} --disable-shared" \
     rbenv install "${REQUIRED_RUBY_VERSION}"
+else
+  log "Ruby ${REQUIRED_RUBY_VERSION} already installed via rbenv — skipping build"
 fi
 
 rbenv global "${REQUIRED_RUBY_VERSION}"
@@ -240,14 +260,21 @@ log "Ruby OK: ${ACTUAL_RUBY_VERSION}"
 # ==================================================
 # 5) CocoaPods (exact version)
 # ==================================================
-log "Installing CocoaPods ${REQUIRED_COCOAPODS_VERSION}..."
-gem install bundler --no-document || true
-gem install cocoapods -v "${REQUIRED_COCOAPODS_VERSION}" --no-document
-rbenv rehash
+log "Ensuring CocoaPods ${REQUIRED_COCOAPODS_VERSION}..."
 
-ACTUAL_COCOAPODS_VERSION="$(pod --version)"
-[[ "${ACTUAL_COCOAPODS_VERSION}" == "${REQUIRED_COCOAPODS_VERSION}" ]] \
-  || die "CocoaPods version mismatch: expected ${REQUIRED_COCOAPODS_VERSION}, got ${ACTUAL_COCOAPODS_VERSION}"
+ACTUAL_COCOAPODS_VERSION="$(pod --version 2>/dev/null || true)"
+if [[ "${ACTUAL_COCOAPODS_VERSION}" == "${REQUIRED_COCOAPODS_VERSION}" ]]; then
+  log "CocoaPods already at ${REQUIRED_COCOAPODS_VERSION} — skipping"
+else
+  log "Installing CocoaPods ${REQUIRED_COCOAPODS_VERSION}..."
+  gem install bundler --no-document || true
+  gem install cocoapods -v "${REQUIRED_COCOAPODS_VERSION}" --no-document
+  rbenv rehash
+
+  ACTUAL_COCOAPODS_VERSION="$(pod --version)"
+  [[ "${ACTUAL_COCOAPODS_VERSION}" == "${REQUIRED_COCOAPODS_VERSION}" ]] \
+    || die "CocoaPods version mismatch: expected ${REQUIRED_COCOAPODS_VERSION}, got ${ACTUAL_COCOAPODS_VERSION}"
+fi
 log "CocoaPods OK: ${ACTUAL_COCOAPODS_VERSION}"
 
 # ==================================================
@@ -262,7 +289,7 @@ Locked versions:
 - Ruby          : ${ACTUAL_RUBY_VERSION}
 - CocoaPods     : ${ACTUAL_COCOAPODS_VERSION}
 - applesimutils : $(applesimutils --version 2>/dev/null || echo "installed")
-- Simulator     : ${CI_SIM_NAME} (${sim_udid})
+- Simulator     : ${REQUIRED_SIM_DEVICE_TYPE} (${default_udid:-none})
 - Runtime       : ${REQUIRED_IOS_SIM_RUNTIME_NAME} (${runtime_identifier})
 
 EOF
