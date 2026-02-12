@@ -224,8 +224,9 @@ else
   log "rbenv already installed — skipping brew install"
 fi
 
-export PATH="$HOME/.rbenv/bin:$PATH"
+export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$PATH"
 eval "$(rbenv init - bash)"
+rbenv rehash 2>/dev/null || true
 
 # Fail fast if rbenv shims are not active
 if [[ "$(command -v ruby)" != "$HOME/.rbenv/shims/ruby" ]]; then
