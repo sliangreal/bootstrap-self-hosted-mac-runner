@@ -222,6 +222,15 @@ fi
 rbenv global "${REQUIRED_RUBY_VERSION}"
 rbenv rehash
 
+# Ensure rbenv is available in future zsh sessions (GitHub Actions runner shell)
+RBENV_INIT='eval "$(rbenv init - zsh)"'
+for rcfile in "$HOME/.zshrc" "$HOME/.zprofile"; do
+  if ! grep -Fq 'rbenv init' "${rcfile}" 2>/dev/null; then
+    echo "${RBENV_INIT}" >> "${rcfile}"
+    log "Added rbenv init to ${rcfile}"
+  fi
+done
+
 # Validate actual runtime, not just rbenv's selection
 ACTUAL_RUBY_VERSION="$(ruby -v | awk '{print $2}')"
 [[ "${ACTUAL_RUBY_VERSION}" == "${REQUIRED_RUBY_VERSION}" ]] \
