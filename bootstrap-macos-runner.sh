@@ -296,4 +296,8 @@ Locked versions:
 - Simulator     : ${REQUIRED_SIM_DEVICE_TYPE} (${default_udid:-none})
 - Runtime       : ${REQUIRED_IOS_SIM_RUNTIME_NAME} (${runtime_identifier})
 
+To use the installed tools in your current shell, run:
+  source ~/.zshrc
+Or open a new terminal session.
+
 EOF
