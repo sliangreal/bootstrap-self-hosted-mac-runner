@@ -228,15 +228,14 @@ else
   launchctl print "${GUI_DOMAIN}/${RUNNER_LABEL}" 2>&1 || true
   echo ""
 
-  # Runner logs go to _diag/, not stdout/stderr
+  # Runner logs go to _diag/, not stdout/stderr — show the most recent ones
   DIAG_DIR="${RUNNER_DIR}/_diag"
   if [[ -d "${DIAG_DIR}" ]]; then
-    LATEST_DIAG="$(ls -t "${DIAG_DIR}"/*.log 2>/dev/null | head -1)"
-    if [[ -n "${LATEST_DIAG}" ]]; then
-      echo "--- ${LATEST_DIAG} (last 30 lines) ---"
-      tail -30 "${LATEST_DIAG}"
+    for diaglog in $(ls -t "${DIAG_DIR}"/*.log 2>/dev/null | head -3); do
+      echo "--- ${diaglog} (last 30 lines) ---"
+      tail -30 "${diaglog}"
       echo ""
-    fi
+    done
   fi
 
   for logfile in "${LOG_DIR}"/*.log; do
@@ -248,9 +247,12 @@ else
   done
 
   # Try running runsvc.sh directly for immediate error output
-  echo "--- Attempting direct run of runsvc.sh (5s timeout) ---"
-  cd "${RUNNER_DIR}"
-  timeout 5 ./runsvc.sh 2>&1 || true
+  echo "--- Attempting direct run of runsvc.sh (5s) ---"
+  (cd "${RUNNER_DIR}" && ACTIONS_RUNNER_SVC=1 ./runsvc.sh &)
+  DIRECT_PID=$!
+  sleep 5
+  kill "${DIRECT_PID}" 2>/dev/null || true
+  wait "${DIRECT_PID}" 2>/dev/null || true
   echo ""
 
   die "Runner failed to start. See diagnostics above."
