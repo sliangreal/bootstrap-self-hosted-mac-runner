@@ -167,16 +167,15 @@ CURRENT_AUTO_LOGIN="$(sudo defaults read /Library/Preferences/com.apple.loginwin
 CURRENT_USER="$(whoami)"
 
 if [[ "${CURRENT_AUTO_LOGIN}" != "${CURRENT_USER}" ]]; then
-  warn "Auto-login is NOT enabled for ${CURRENT_USER}."
-  warn "On a headless Mac, the LaunchAgent won't start after reboot without a GUI session."
-  warn ""
-  warn "To fix: VNC into this Mac and enable auto-login in:"
-  warn "  System Settings > General > Login Items > Automatic login: ${CURRENT_USER}"
-  warn ""
-  warn "Continuing anyway (the agent can still be loaded manually)..."
-else
-  log "Auto-login is enabled for ${CURRENT_USER}"
+  die "Auto-login is NOT enabled for ${CURRENT_USER}.
+  On a headless Mac, the LaunchAgent won't start after reboot without a GUI session.
+
+  To fix: VNC into this Mac and enable auto-login in:
+    System Settings > General > Login Items > Automatic login: ${CURRENT_USER}
+
+  Then re-run this script."
 fi
+log "Auto-login is enabled for ${CURRENT_USER}"
 
 # --------------------------------------------------------------------------
 # 4) Load the LaunchAgent
