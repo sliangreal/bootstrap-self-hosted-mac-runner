@@ -96,6 +96,12 @@ fi
 # Accept license (required for xcodebuild, CocoaPods, etc.)
 sudo xcodebuild -license accept
 
+# Install required system packages (CoreSimulator, simctl, etc.)
+# This is critical: if a previous install was interrupted (e.g. SSH timeout),
+# the Xcode app may exist but system components will be missing.
+log "Installing Xcode first-launch system packages..."
+sudo xcodebuild -runFirstLaunch
+
 # ==================================================
 # Validate Xcode version (FAIL FAST)
 # ==================================================
@@ -103,6 +109,11 @@ ACTUAL_XCODE_VERSION="$(xcodebuild -version | head -n1 | awk '{print $2}')"
 [[ "${ACTUAL_XCODE_VERSION}" == "${REQUIRED_XCODE_VERSION}" ]] \
   || die "Xcode version mismatch: expected ${REQUIRED_XCODE_VERSION}, got ${ACTUAL_XCODE_VERSION}"
 log "Xcode OK: ${ACTUAL_XCODE_VERSION}"
+
+# Validate Xcode components are functional (catches partial installs)
+if ! xcrun simctl list devicetypes >/dev/null 2>&1; then
+  die "Xcode ${REQUIRED_XCODE_VERSION} appears broken (simctl not functional). Remove it and re-run this script:\n  sudo rm -rf /Applications/Xcode-${REQUIRED_XCODE_VERSION}*.app && xcodes install ${REQUIRED_XCODE_VERSION} --select"
+fi
 
 # ==================================================
 # Simulator runtime + device (iPhone 16 Pro / iOS 18.6)
