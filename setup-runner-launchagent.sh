@@ -90,8 +90,15 @@ log "Uninstalling any previous LaunchAgent..."
 ./svc.sh uninstall 2>/dev/null || true
 
 # --------------------------------------------------------------------------
-# 5) Install and start via svc.sh
+# 5) Write .path and install/start via svc.sh
 # --------------------------------------------------------------------------
+# The runner reads .path (not shell profiles) to set its PATH at startup.
+# Build the ideal PATH and write it so the runner can find rbenv Ruby, node, etc.
+DESIRED_PATH="${HOME}/.rbenv/shims:${HOME}/.rbenv/bin:${HOME}/.nvm/versions/node/$(ls -1 "${HOME}/.nvm/versions/node/" 2>/dev/null | tail -1)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+log "Writing .path for runner service..."
+echo "${DESIRED_PATH}" > "${RUNNER_DIR}/.path"
+log "Runner PATH: $(cat "${RUNNER_DIR}/.path")"
+
 log "Installing LaunchAgent via svc.sh..."
 ./svc.sh install
 
