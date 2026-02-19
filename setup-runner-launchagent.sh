@@ -160,6 +160,10 @@ else
   RUNNER_LABEL="$(/usr/bin/plutil -extract Label raw "${AGENT_PLIST}")"
 fi
 
+# Ensure the log directory exists for all code paths
+LOG_DIR="${LOG_DIR:-$HOME/Library/Logs/${RUNNER_LABEL}}"
+mkdir -p "${LOG_DIR}"
+
 # --------------------------------------------------------------------------
 # 3) Check auto-login
 # --------------------------------------------------------------------------
@@ -192,13 +196,29 @@ kill "$(pgrep -f "${RUNNER_DIR}/runsvc.sh")" 2>/dev/null || true
 sleep 1
 
 log "Loading LaunchAgent in ${GUI_DOMAIN}..."
-launchctl bootstrap "${GUI_DOMAIN}" "${AGENT_PLIST}"
+if ! launchctl bootstrap "${GUI_DOMAIN}" "${AGENT_PLIST}" 2>&1; then
+  warn "launchctl bootstrap returned an error (may be non-fatal if service was already loaded)"
+fi
 
-sleep 2
+# Give the runner time to start
+sleep 3
 if pgrep -f "${RUNNER_DIR}/runsvc.sh" >/dev/null; then
   log "Runner is running (PID $(pgrep -f "${RUNNER_DIR}/runsvc.sh"))"
 else
-  die "Runner failed to start. Check logs:\n    tail ~/Library/Logs/${RUNNER_LABEL}/*.log"
+  echo ""
+  warn "Runner failed to start. Collecting diagnostics..."
+  echo ""
+  echo "--- launchctl print ${GUI_DOMAIN}/${RUNNER_LABEL} ---"
+  launchctl print "${GUI_DOMAIN}/${RUNNER_LABEL}" 2>&1 || true
+  echo ""
+  for logfile in "${LOG_DIR}"/*.log; do
+    if [[ -f "${logfile}" ]]; then
+      echo "--- ${logfile} (last 20 lines) ---"
+      tail -20 "${logfile}"
+      echo ""
+    fi
+  done
+  die "Runner failed to start. See diagnostics above."
 fi
 
 # --------------------------------------------------------------------------
