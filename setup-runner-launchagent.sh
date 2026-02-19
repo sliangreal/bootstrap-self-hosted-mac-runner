@@ -2,33 +2,25 @@
 set -euo pipefail
 
 # ==============================================================================
-# Convert a GitHub Actions self-hosted runner from LaunchDaemon to LaunchAgent
+# Set up a GitHub Actions self-hosted runner as a LaunchAgent
 # ==============================================================================
 #
-# WHY: A LaunchDaemon runs outside any GUI session.  macOS only exposes user
-#      keychains in the effective search list inside a GUI session, so fastlane's
-#      setup_ci / match / codesign all fail silently on a LaunchDaemon runner.
-#
-#      A LaunchAgent runs inside the logged-in user's GUI session where keychain
-#      operations work normally.
+# WHY: A LaunchAgent runs inside the logged-in user's GUI session where
+#      keychain operations (fastlane match, codesign) work properly.
 #
 # PREREQUISITES:
 #   1. The GitHub Actions runner is already configured (config.sh has been run).
-#   2. Auto-login MUST be enabled via System Settings so a GUI session exists at
-#      boot.  On a headless Mac (e.g. MacStadium), VNC/Screen Sharing into the
-#      machine and enable:
-#        System Settings > General > Login Items > Automatic login: <your user>
-#      This script will remind you if auto-login is not detected.
+#   2. Auto-login MUST be enabled so a GUI session exists at boot.
 #   3. Run this script from an SSH session (or Terminal) on the runner machine.
 #
 # WHAT IT DOES:
-#   1. Detects the runner's existing LaunchDaemon plist (if any)
-#   2. Converts it to a LaunchAgent, OR creates a fresh LaunchAgent plist
-#      (removes UserName, adds SessionCreate and ProcessType keys)
-#   3. Loads the LaunchAgent in the gui/<uid> domain
+#   1. Validates auto-login and GUI session are available
+#   2. Removes any existing LaunchDaemon (from a prior sudo svc.sh install)
+#   3. Delegates to the runner's own svc.sh to install & start the LaunchAgent
+#   4. Verifies the runner is running
 #
 # USAGE:
-#   bash setup-runner-launchagent.sh
+#   bash setup-runner-launchagent.sh [RUNNER_DIR]
 #
 # ==============================================================================
 
@@ -36,188 +28,23 @@ log()  { echo -e "\n\033[1;34m==>\033[0m $*"; }
 warn() { echo -e "\n\033[1;33mWARN:\033[0m $*"; }
 die()  { echo -e "\n\033[1;31mERROR:\033[0m $*" >&2; exit 1; }
 
-RUNNER_DIR="${RUNNER_DIR:-$HOME/actions-runner}"
-[[ -d "${RUNNER_DIR}" ]] || die "Runner directory not found at ${RUNNER_DIR}. Set RUNNER_DIR if it's elsewhere."
+RUNNER_DIR="${1:-${RUNNER_DIR:-$HOME/actions-runner}}"
+[[ -d "${RUNNER_DIR}" ]] || die "Runner directory not found at ${RUNNER_DIR}.\n    Usage: bash $0 [/path/to/actions-runner]"
 
 # --------------------------------------------------------------------------
-# 1) Find the runner's LaunchDaemon plist
+# 1) Pre-flight checks
 # --------------------------------------------------------------------------
-log "Looking for existing runner LaunchDaemon..."
-
-DAEMON_PLIST=""
-for f in /Library/LaunchDaemons/actions.runner.*.plist; do
-  [[ -f "$f" ]] || continue
-  # Match plists whose ProgramArguments reference this runner directory
-  if grep -q "${RUNNER_DIR}/runsvc.sh" "$f" 2>/dev/null; then
-    DAEMON_PLIST="$f"
-    break
-  fi
-done
-
-# Extract the label from the plist (used for launchctl commands and naming)
-if [[ -n "${DAEMON_PLIST}" ]]; then
-  RUNNER_LABEL="$(/usr/bin/plutil -extract Label raw "${DAEMON_PLIST}")"
-  log "Found LaunchDaemon: ${DAEMON_PLIST} (label: ${RUNNER_LABEL})"
-else
-  # No daemon — check if a LaunchAgent already exists
-  for f in "$HOME/Library/LaunchAgents"/actions.runner.*.plist; do
-    [[ -f "$f" ]] || continue
-    if grep -q "${RUNNER_DIR}/runsvc.sh" "$f" 2>/dev/null; then
-      RUNNER_LABEL="$(/usr/bin/plutil -extract Label raw "$f")"
-      log "LaunchAgent already exists at $f (label: ${RUNNER_LABEL})"
-      log "Skipping conversion — will ensure it's loaded."
-      AGENT_PLIST="$f"
-      break
-    fi
-  done
-  if [[ -z "${AGENT_PLIST:-}" ]]; then
-    log "No existing LaunchDaemon or LaunchAgent found — will create a fresh plist."
-  fi
-fi
-
-# --------------------------------------------------------------------------
-# 2) Create or convert the LaunchAgent plist
-# --------------------------------------------------------------------------
-if [[ -n "${DAEMON_PLIST}" ]]; then
-  # --- Convert existing LaunchDaemon → LaunchAgent ---
-  RUNNER_LABEL="$(/usr/bin/plutil -extract Label raw "${DAEMON_PLIST}")"
-  AGENT_PLIST="${AGENT_PLIST:-$HOME/Library/LaunchAgents/${RUNNER_LABEL}.plist}"
-
-  log "Stopping LaunchDaemon..."
-  sudo launchctl bootout "system/${RUNNER_LABEL}" 2>/dev/null || true
-  sleep 2
-
-  log "Creating LaunchAgent at ${AGENT_PLIST}..."
-  mkdir -p "$HOME/Library/LaunchAgents"
-  sudo cp "${DAEMON_PLIST}" "${AGENT_PLIST}"
-  sudo chown "$(whoami)" "${AGENT_PLIST}"
-
-  # Remove UserName (not valid for LaunchAgents)
-  /usr/bin/plutil -remove UserName "${AGENT_PLIST}" 2>/dev/null || true
-
-  # Add SessionCreate and ProcessType for a proper security session
-  /usr/bin/plutil -replace SessionCreate -bool true "${AGENT_PLIST}" 2>/dev/null || true
-  /usr/bin/plutil -replace ProcessType -string "Interactive" "${AGENT_PLIST}" 2>/dev/null || true
-
-  # Remove the old LaunchDaemon
-  sudo rm "${DAEMON_PLIST}"
-  log "Removed LaunchDaemon: ${DAEMON_PLIST}"
-
-elif [[ -z "${AGENT_PLIST:-}" ]]; then
-  # --- Create a fresh LaunchAgent plist ---
-  # Derive the label from the runner's .runner config if available
-  if [[ -f "${RUNNER_DIR}/.runner" ]]; then
-    RUNNER_NAME="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['agentName'])" "${RUNNER_DIR}/.runner" 2>/dev/null || echo "self-hosted-runner")"
-  else
-    RUNNER_NAME="mac-m4-runner"
-  fi
-  RUNNER_LABEL="actions.runner.${RUNNER_NAME}"
-  AGENT_PLIST="$HOME/Library/LaunchAgents/${RUNNER_LABEL}.plist"
-  LOG_DIR="$HOME/Library/Logs/${RUNNER_LABEL}"
-
-  log "Creating fresh LaunchAgent plist at ${AGENT_PLIST}..."
-  mkdir -p "$HOME/Library/LaunchAgents"
-  mkdir -p "${LOG_DIR}"
-
-  cat > "${AGENT_PLIST}" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${RUNNER_LABEL}</string>
-  <key>WorkingDirectory</key>
-  <string>${RUNNER_DIR}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${RUNNER_DIR}/runsvc.sh</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>SessionCreate</key>
-  <true/>
-  <key>ProcessType</key>
-  <string>Interactive</string>
-  <key>StandardOutPath</key>
-  <string>${LOG_DIR}/stdout.log</string>
-  <key>StandardErrorPath</key>
-  <string>${LOG_DIR}/stderr.log</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>ACTIONS_RUNNER_SVC</key>
-    <string>1</string>
-    <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-  </dict>
-</dict>
-</plist>
-PLIST
-
-  log "Created LaunchAgent: ${AGENT_PLIST}"
-else
-  RUNNER_LABEL="$(/usr/bin/plutil -extract Label raw "${AGENT_PLIST}")"
-fi
-
-# Ensure the log directory exists for all code paths
-LOG_DIR="${LOG_DIR:-$HOME/Library/Logs/${RUNNER_LABEL}}"
-mkdir -p "${LOG_DIR}"
-
-# --------------------------------------------------------------------------
-# 2b) Fix runner directory ownership
-# --------------------------------------------------------------------------
-# When converting from a LaunchDaemon (which runs as root), files like
-# .credentials, .runner, _diag/, etc. may be owned by root.  The LaunchAgent
-# runs as the current user and needs read/write access.
 CURRENT_USER="$(whoami)"
-log "Ensuring ${CURRENT_USER} owns ${RUNNER_DIR}..."
-sudo chown -R "${CURRENT_USER}" "${RUNNER_DIR}"
 
-# Pre-flight: verify critical runner config files exist
-for required_file in .runner .credentials; do
+# Verify runner has been configured
+for required_file in .runner .credentials svc.sh; do
   if [[ ! -f "${RUNNER_DIR}/${required_file}" ]]; then
     die "Missing ${RUNNER_DIR}/${required_file} — the runner has not been configured.\n    Run: cd ${RUNNER_DIR} && ./config.sh --url <repo-or-org-url> --token <token>"
   fi
 done
 
-# Generate runsvc.sh if missing (normally created by svc.sh install)
-# Source: https://github.com/actions/runner/blob/main/src/Misc/layoutbin/runsvc.sh
-if [[ ! -f "${RUNNER_DIR}/runsvc.sh" ]]; then
-  log "Creating missing runsvc.sh..."
-  cat > "${RUNNER_DIR}/runsvc.sh" <<'RUNSVC'
-#!/bin/bash
-
-# convert SIGTERM signal to SIGINT
-trap 'kill -INT $PID' TERM INT
-
-if [ -f ".path" ]; then
-    export PATH=`cat .path`
-    echo ".path=${PATH}"
-fi
-
-# detect node version bundled with the runner
-nodever="node20"
-for d in externals/node*/; do
-    [ -d "$d" ] && nodever="$(basename "$d")" && break
-done
-
-# run the host process which keeps the listener alive
-./externals/$nodever/bin/node ./bin/RunnerService.js &
-PID=$!
-wait $PID
-trap - TERM INT
-wait $PID
-RUNSVC
-  chmod 755 "${RUNNER_DIR}/runsvc.sh"
-  log "Created ${RUNNER_DIR}/runsvc.sh"
-fi
-
-# --------------------------------------------------------------------------
-# 3) Check auto-login
-# --------------------------------------------------------------------------
+# Enforce auto-login
 CURRENT_AUTO_LOGIN="$(sudo defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true)"
-
 if [[ "${CURRENT_AUTO_LOGIN}" != "${CURRENT_USER}" ]]; then
   die "Auto-login is NOT enabled for ${CURRENT_USER}.
   On a headless Mac, the LaunchAgent won't start after reboot without a GUI session.
@@ -229,69 +56,62 @@ if [[ "${CURRENT_AUTO_LOGIN}" != "${CURRENT_USER}" ]]; then
 fi
 log "Auto-login is enabled for ${CURRENT_USER}"
 
-# --------------------------------------------------------------------------
-# 4) Load the LaunchAgent
-# --------------------------------------------------------------------------
+# Verify GUI session exists
 GUI_DOMAIN="gui/$(id -u)"
-
 if ! launchctl print "${GUI_DOMAIN}" &>/dev/null; then
   die "No GUI session available (${GUI_DOMAIN} domain not found).\n    You must log in via VNC/Screen Sharing first, then re-run this script."
 fi
 
-# Unload any previous instance
-launchctl bootout "${GUI_DOMAIN}/${RUNNER_LABEL}" 2>/dev/null || true
-kill "$(pgrep -f "${RUNNER_DIR}/runsvc.sh")" 2>/dev/null || true
-sleep 1
+# --------------------------------------------------------------------------
+# 2) Fix ownership (in case runner was previously run as root/LaunchDaemon)
+# --------------------------------------------------------------------------
+log "Ensuring ${CURRENT_USER} owns ${RUNNER_DIR}..."
+sudo chown -R "${CURRENT_USER}" "${RUNNER_DIR}"
 
-log "Loading LaunchAgent in ${GUI_DOMAIN}..."
-if ! launchctl bootstrap "${GUI_DOMAIN}" "${AGENT_PLIST}" 2>&1; then
-  warn "launchctl bootstrap returned an error (may be non-fatal if service was already loaded)"
-fi
+# --------------------------------------------------------------------------
+# 3) Remove any existing LaunchDaemon
+# --------------------------------------------------------------------------
+for f in /Library/LaunchDaemons/actions.runner.*.plist; do
+  [[ -f "$f" ]] || continue
+  if grep -q "${RUNNER_DIR}" "$f" 2>/dev/null; then
+    DAEMON_LABEL="$(/usr/bin/plutil -extract Label raw "$f")"
+    log "Removing existing LaunchDaemon: $f (label: ${DAEMON_LABEL})"
+    sudo launchctl bootout "system/${DAEMON_LABEL}" 2>/dev/null || true
+    sudo rm "$f"
+  fi
+done
 
-# Give the runner time to start
-sleep 3
+# --------------------------------------------------------------------------
+# 4) Uninstall any existing LaunchAgent (svc.sh handles this cleanly)
+# --------------------------------------------------------------------------
+cd "${RUNNER_DIR}"
+log "Uninstalling any previous LaunchAgent..."
+./svc.sh stop 2>/dev/null || true
+./svc.sh uninstall 2>/dev/null || true
+
+# --------------------------------------------------------------------------
+# 5) Install and start via svc.sh
+# --------------------------------------------------------------------------
+log "Installing LaunchAgent via svc.sh..."
+./svc.sh install
+
+log "Starting runner..."
+./svc.sh start
+
+# --------------------------------------------------------------------------
+# 6) Verify
+# --------------------------------------------------------------------------
+sleep 2
+./svc.sh status
+
 if pgrep -f "${RUNNER_DIR}/runsvc.sh" >/dev/null; then
   log "Runner is running (PID $(pgrep -f "${RUNNER_DIR}/runsvc.sh"))"
 else
-  echo ""
-  warn "Runner failed to start. Collecting diagnostics..."
-  echo ""
-  echo "--- launchctl print ${GUI_DOMAIN}/${RUNNER_LABEL} ---"
-  launchctl print "${GUI_DOMAIN}/${RUNNER_LABEL}" 2>&1 || true
-  echo ""
-
-  # Runner logs go to _diag/, not stdout/stderr — show the most recent ones
-  DIAG_DIR="${RUNNER_DIR}/_diag"
-  if [[ -d "${DIAG_DIR}" ]]; then
-    for diaglog in $(ls -t "${DIAG_DIR}"/*.log 2>/dev/null | head -3); do
-      echo "--- ${diaglog} (last 30 lines) ---"
-      tail -30 "${diaglog}"
-      echo ""
-    done
-  fi
-
-  for logfile in "${LOG_DIR}"/*.log; do
-    if [[ -f "${logfile}" && -s "${logfile}" ]]; then
-      echo "--- ${logfile} (last 20 lines) ---"
-      tail -20 "${logfile}"
-      echo ""
-    fi
-  done
-
-  # Try running runsvc.sh directly for immediate error output
-  echo "--- Attempting direct run of runsvc.sh (5s) ---"
-  (cd "${RUNNER_DIR}" && ACTIONS_RUNNER_SVC=1 ./runsvc.sh &)
-  DIRECT_PID=$!
-  sleep 5
-  kill "${DIRECT_PID}" 2>/dev/null || true
-  wait "${DIRECT_PID}" 2>/dev/null || true
-  echo ""
-
-  die "Runner failed to start. See diagnostics above."
+  warn "Runner process not detected — check status above."
 fi
 
 # --------------------------------------------------------------------------
-# 5) Verify keychain operations work
+# 7) Verify keychain operations work
 # --------------------------------------------------------------------------
 log "Testing keychain operations..."
 TEST_KC="/tmp/test-runner-kc-$$-db"
@@ -308,17 +128,18 @@ fi
 # --------------------------------------------------------------------------
 # Done
 # --------------------------------------------------------------------------
+SVC_NAME="$(grep '^SVC_NAME=' "${RUNNER_DIR}/svc.sh" | head -1 | cut -d'"' -f2)"
 log "Setup complete ✅"
 cat <<EOF
 
-Runner service configured as LaunchAgent:
-  Plist : ${AGENT_PLIST}
-  Label : ${RUNNER_LABEL}
-  Domain: ${GUI_DOMAIN}
+Runner service configured as LaunchAgent.
+  Runner dir: ${RUNNER_DIR}
+  Service:    ${SVC_NAME:-unknown}
 
 The runner will auto-start on boot as long as auto-login is enabled.
-To check status:  launchctl print ${GUI_DOMAIN}/${RUNNER_LABEL}
-To stop:          launchctl bootout ${GUI_DOMAIN}/${RUNNER_LABEL}
-To start:         launchctl bootstrap ${GUI_DOMAIN} ${AGENT_PLIST}
+To check status:  cd ${RUNNER_DIR} && ./svc.sh status
+To stop:          cd ${RUNNER_DIR} && ./svc.sh stop
+To start:         cd ${RUNNER_DIR} && ./svc.sh start
+To uninstall:     cd ${RUNNER_DIR} && ./svc.sh uninstall
 
 EOF
