@@ -165,10 +165,26 @@ LOG_DIR="${LOG_DIR:-$HOME/Library/Logs/${RUNNER_LABEL}}"
 mkdir -p "${LOG_DIR}"
 
 # --------------------------------------------------------------------------
+# 2b) Fix runner directory ownership
+# --------------------------------------------------------------------------
+# When converting from a LaunchDaemon (which runs as root), files like
+# .credentials, .runner, _diag/, etc. may be owned by root.  The LaunchAgent
+# runs as the current user and needs read/write access.
+CURRENT_USER="$(whoami)"
+log "Ensuring ${CURRENT_USER} owns ${RUNNER_DIR}..."
+sudo chown -R "${CURRENT_USER}" "${RUNNER_DIR}"
+
+# Pre-flight: verify critical runner config files exist
+for required_file in .runner .credentials; do
+  if [[ ! -f "${RUNNER_DIR}/${required_file}" ]]; then
+    die "Missing ${RUNNER_DIR}/${required_file} — the runner has not been configured.\n    Run: cd ${RUNNER_DIR} && ./config.sh --url <repo-or-org-url> --token <token>"
+  fi
+done
+
+# --------------------------------------------------------------------------
 # 3) Check auto-login
 # --------------------------------------------------------------------------
 CURRENT_AUTO_LOGIN="$(sudo defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true)"
-CURRENT_USER="$(whoami)"
 
 if [[ "${CURRENT_AUTO_LOGIN}" != "${CURRENT_USER}" ]]; then
   die "Auto-login is NOT enabled for ${CURRENT_USER}.
