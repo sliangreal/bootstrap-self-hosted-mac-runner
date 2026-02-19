@@ -181,6 +181,38 @@ for required_file in .runner .credentials; do
   fi
 done
 
+# Generate runsvc.sh if missing (normally created by svc.sh install)
+# Source: https://github.com/actions/runner/blob/main/src/Misc/layoutbin/runsvc.sh
+if [[ ! -f "${RUNNER_DIR}/runsvc.sh" ]]; then
+  log "Creating missing runsvc.sh..."
+  cat > "${RUNNER_DIR}/runsvc.sh" <<'RUNSVC'
+#!/bin/bash
+
+# convert SIGTERM signal to SIGINT
+trap 'kill -INT $PID' TERM INT
+
+if [ -f ".path" ]; then
+    export PATH=`cat .path`
+    echo ".path=${PATH}"
+fi
+
+# detect node version bundled with the runner
+nodever="node20"
+for d in externals/node*/; do
+    [ -d "$d" ] && nodever="$(basename "$d")" && break
+done
+
+# run the host process which keeps the listener alive
+./externals/$nodever/bin/node ./bin/RunnerService.js &
+PID=$!
+wait $PID
+trap - TERM INT
+wait $PID
+RUNSVC
+  chmod 755 "${RUNNER_DIR}/runsvc.sh"
+  log "Created ${RUNNER_DIR}/runsvc.sh"
+fi
+
 # --------------------------------------------------------------------------
 # 3) Check auto-login
 # --------------------------------------------------------------------------
