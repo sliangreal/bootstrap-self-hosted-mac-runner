@@ -26,7 +26,7 @@ If Xcode is already installed at the required version, these variables are not n
 ### Usage
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sliangreal/bootstrap-self-hosted-mac-runner/main/bootstrap-macos-runner.sh -o /tmp/bootstrap-macos-runner.sh && bash /tmp/bootstrap-macos-runner.sh
+curl -fsSL https://raw.githubusercontent.com/Realtyka/bootstrap-self-hosted-mac-runner/main/bootstrap-macos-runner.sh -o /tmp/bootstrap-macos-runner.sh && bash /tmp/bootstrap-macos-runner.sh
 ```
 
 > **Note:** The script runs interactively. It will prompt for your `sudo` password (for Homebrew and Xcode license acceptance) and may ask for confirmation during certain install steps. Stay at the terminal and watch for prompts.
@@ -36,5 +36,5 @@ curl -fsSL https://raw.githubusercontent.com/sliangreal/bootstrap-self-hosted-ma
 A GitHub Actions runner installed as a LaunchDaemon runs outside any GUI session, which means macOS user keychains are not available. This causes fastlane's `setup_ci` / `match` / codesign to fail silently. The `setup-runner-launchagent.sh` script sets up the runner as a LaunchAgent so it runs inside the logged-in user's GUI session where keychain operations work normally. If an existing LaunchDaemon is found, it will be converted; otherwise a fresh LaunchAgent plist is created.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sliangreal/bootstrap-self-hosted-mac-runner/main/setup-runner-launchagent.sh -o /tmp/setup-runner-launchagent.sh && bash /tmp/setup-runner-launchagent.sh
+curl -fsSL https://raw.githubusercontent.com/Realtyka/bootstrap-self-hosted-mac-runner/main/setup-runner-launchagent.sh -o /tmp/setup-runner-launchagent.sh && bash /tmp/setup-runner-launchagent.sh
 ```
