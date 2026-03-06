@@ -19,6 +19,11 @@ CI_SIM_NAME="CI iPhone 16 Pro (18.6)"
 # Example: export IOS_RUNTIME_DMG_PATH="/path/to/iOS_18.6_Simulator_Runtime.dmg"
 IOS_RUNTIME_DMG_PATH="${IOS_RUNTIME_DMG_PATH:-}"
 
+# Additional Xcode (installed alongside the default, NOT selected as default)
+ADDITIONAL_XCODE_VERSION="26.0"
+ADDITIONAL_IOS_SIM_RUNTIME_NAME="iOS 26.0"
+ADDITIONAL_SIM_DEVICE_TYPE="iPhone 17 Pro"
+
 # ==================================================
 # Helpers
 # ==================================================
@@ -182,6 +187,120 @@ else
 fi
 
 # ==================================================
+# Additional Xcode (installed alongside, NOT the default)
+# ==================================================
+log "Ensuring additional Xcode ${ADDITIONAL_XCODE_VERSION} is installed..."
+
+ADDITIONAL_XCODE_INSTALLED=false
+if command_exists xcodes && xcodes installed 2>/dev/null | grep -q "^${ADDITIONAL_XCODE_VERSION}\b"; then
+  ADDITIONAL_XCODE_INSTALLED=true
+  log "Xcode ${ADDITIONAL_XCODE_VERSION} is already installed — skipping"
+fi
+
+if [[ "${ADDITIONAL_XCODE_INSTALLED}" == false ]]; then
+  # Ensure xcodes is available
+  if ! command_exists xcodes; then
+    log "Installing xcodes (pre-built binary)..."
+    curl -sL "https://github.com/XcodesOrg/xcodes/releases/latest/download/xcodes.zip" -o /tmp/xcodes.zip
+    unzip -o /tmp/xcodes.zip -d /tmp
+    install -m 755 /tmp/xcodes "$(brew --prefix)/bin/xcodes"
+    rm -f /tmp/xcodes.zip /tmp/xcodes
+  fi
+
+  # Ensure credentials are available
+  if [[ -z "${XCODES_USERNAME:-}" ]]; then
+    if [[ -z "${XCODE_APPLE_ID:-}" || -z "${XCODE_APPLE_ID_PASSWORD:-}" ]]; then
+      die "Xcode ${ADDITIONAL_XCODE_VERSION} install requires XCODE_APPLE_ID and XCODE_APPLE_ID_PASSWORD env vars"
+    fi
+    export XCODES_USERNAME="${XCODE_APPLE_ID}"
+    export XCODES_PASSWORD="${XCODE_APPLE_ID_PASSWORD}"
+  fi
+
+  log "Downloading and installing Xcode ${ADDITIONAL_XCODE_VERSION} (this will take a while)..."
+  xcodes install "${ADDITIONAL_XCODE_VERSION}"
+fi
+
+# Locate the Xcode app bundle for the additional version
+ADDITIONAL_XCODE_APP=""
+for app in /Applications/Xcode*"${ADDITIONAL_XCODE_VERSION}"*.app; do
+  if [[ -d "$app" ]]; then
+    ADDITIONAL_XCODE_APP="$app"
+    break
+  fi
+done
+[[ -n "${ADDITIONAL_XCODE_APP}" ]] \
+  || die "Cannot find Xcode ${ADDITIONAL_XCODE_VERSION} app bundle in /Applications"
+
+log "Found Xcode ${ADDITIONAL_XCODE_VERSION} at ${ADDITIONAL_XCODE_APP}"
+
+# Save current xcode-select path so we can restore the default afterwards
+DEFAULT_XCODE_PATH="$(xcode-select -p)"
+
+# Temporarily switch to Xcode 26 for license, first-launch, and simulator setup
+log "Temporarily selecting Xcode ${ADDITIONAL_XCODE_VERSION} for setup..."
+sudo xcode-select -s "${ADDITIONAL_XCODE_APP}/Contents/Developer"
+
+sudo xcodebuild -license accept
+
+log "Installing Xcode ${ADDITIONAL_XCODE_VERSION} first-launch system packages..."
+sudo xcodebuild -runFirstLaunch
+
+# --- Simulator runtime for additional Xcode ---
+log "Ensuring simulator runtime '${ADDITIONAL_IOS_SIM_RUNTIME_NAME}' for Xcode ${ADDITIONAL_XCODE_VERSION}..."
+
+get_additional_runtime_id() {
+  xcrun simctl list runtimes \
+    | grep -F "${ADDITIONAL_IOS_SIM_RUNTIME_NAME}" \
+    | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9.\-]+' \
+    | head -n1 || true
+}
+
+additional_runtime_id="$(get_additional_runtime_id)"
+
+if [[ -z "${additional_runtime_id}" ]]; then
+  log "Runtime '${ADDITIONAL_IOS_SIM_RUNTIME_NAME}' not found — attempting install via xcodes..."
+  if command_exists xcodes; then
+    set +e
+    xcodes runtimes install "${ADDITIONAL_IOS_SIM_RUNTIME_NAME}"
+    set -e
+    additional_runtime_id="$(get_additional_runtime_id)"
+  fi
+fi
+
+if [[ -n "${additional_runtime_id}" ]]; then
+  log "Additional runtime OK: ${additional_runtime_id}"
+
+  # Warm up a simulator for the additional Xcode
+  set +eo pipefail
+  additional_udid="$(xcrun simctl list devices \
+    | grep "${ADDITIONAL_SIM_DEVICE_TYPE}" \
+    | grep -oE '[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}' \
+    | head -n1)"
+  set -eo pipefail
+
+  if [[ -n "${additional_udid}" ]]; then
+    log "Warming up Xcode ${ADDITIONAL_XCODE_VERSION} simulator: ${ADDITIONAL_SIM_DEVICE_TYPE} (${additional_udid})..."
+    xcrun simctl boot "${additional_udid}" || true
+    xcrun simctl bootstatus "${additional_udid}" -b
+    xcrun simctl shutdown "${additional_udid}" || true
+    log "Additional simulator ready: ${additional_udid}"
+  else
+    log "Warning: No ${ADDITIONAL_SIM_DEVICE_TYPE} simulator found for ${ADDITIONAL_IOS_SIM_RUNTIME_NAME}"
+  fi
+else
+  log "Warning: Runtime '${ADDITIONAL_IOS_SIM_RUNTIME_NAME}' could not be installed. Install it manually via Xcode > Settings > Platforms."
+fi
+
+# Restore default Xcode
+log "Restoring default Xcode (${REQUIRED_XCODE_VERSION})..."
+sudo xcode-select -s "${DEFAULT_XCODE_PATH}"
+
+RESTORED_XCODE_VERSION="$(xcodebuild -version | head -n1 | awk '{print $2}')"
+[[ "${RESTORED_XCODE_VERSION}" == "${REQUIRED_XCODE_VERSION}" ]] \
+  || die "Failed to restore default Xcode: expected ${REQUIRED_XCODE_VERSION}, got ${RESTORED_XCODE_VERSION}"
+log "Active Xcode restored: ${RESTORED_XCODE_VERSION}"
+
+# ==================================================
 # 2) NVM + Node.js (official installer)
 # ==================================================
 log "Ensuring NVM and Node ${REQUIRED_NODE_VERSION}..."
@@ -299,13 +418,15 @@ log "Bootstrap complete ✅"
 cat <<EOF
 
 Locked versions:
-- Xcode         : ${ACTUAL_XCODE_VERSION}
-- Node          : ${ACTUAL_NODE_VERSION}
-- Ruby          : ${ACTUAL_RUBY_VERSION}
-- CocoaPods     : ${ACTUAL_COCOAPODS_VERSION}
-- applesimutils : $(applesimutils --version 2>/dev/null || echo "installed")
-- Simulator     : ${REQUIRED_SIM_DEVICE_TYPE} (${default_udid:-none})
-- Runtime       : ${REQUIRED_IOS_SIM_RUNTIME_NAME} (${runtime_identifier})
+- Xcode (default) : ${ACTUAL_XCODE_VERSION}
+- Xcode (extra)   : ${ADDITIONAL_XCODE_VERSION} (${ADDITIONAL_XCODE_APP})
+- Node            : ${ACTUAL_NODE_VERSION}
+- Ruby            : ${ACTUAL_RUBY_VERSION}
+- CocoaPods       : ${ACTUAL_COCOAPODS_VERSION}
+- applesimutils   : $(applesimutils --version 2>/dev/null || echo "installed")
+- Simulator       : ${REQUIRED_SIM_DEVICE_TYPE} (${default_udid:-none})
+- Runtime         : ${REQUIRED_IOS_SIM_RUNTIME_NAME} (${runtime_identifier})
+- Extra Runtime   : ${ADDITIONAL_IOS_SIM_RUNTIME_NAME} (${additional_runtime_id:-not installed})
 
 To use the installed tools in your current shell, run:
   source ~/.zshrc

@@ -17,11 +17,13 @@ If Xcode is already installed at the required version, these variables are not n
 
 | Tool | Version |
 |------|---------|
-| Xcode | 16.4 |
+| Xcode (default) | 16.4 |
+| Xcode (extra) | 26.0 (installed alongside, not default) |
 | Node.js | 22.12.0 |
 | Ruby | 3.1.2 |
 | CocoaPods | 1.16.2 |
 | iOS Simulator | iOS 18.6 (iPhone 16 Pro) |
+| iOS Simulator (extra) | iOS 26.0 (iPhone 17 Pro) |
 
 ### Usage
 
