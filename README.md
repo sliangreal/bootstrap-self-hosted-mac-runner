@@ -31,6 +31,14 @@ curl -fsSL https://raw.githubusercontent.com/Realtyka/bootstrap-self-hosted-mac-
 
 > **Note:** The script runs interactively. It will prompt for your `sudo` password (for Homebrew and Xcode license acceptance) and may ask for confirmation during certain install steps. Stay at the terminal and watch for prompts.
 
+### Managing runner labels
+
+To add or remove labels from the self-hosted runner, go to **Settings → Actions → Runners** in the repository:
+
+<https://github.com/Realtyka/real-app/settings/actions/runners>
+
+Click the runner, then edit its labels as needed.
+
 ### Set up runner as LaunchAgent
 
 A GitHub Actions runner installed as a LaunchDaemon runs outside any GUI session, which means macOS user keychains are not available. This causes fastlane's `setup_ci` / `match` / codesign to fail silently. The `setup-runner-launchagent.sh` script sets up the runner as a LaunchAgent so it runs inside the logged-in user's GUI session where keychain operations work normally. If an existing LaunchDaemon is found, it will be converted; otherwise a fresh LaunchAgent plist is created.
