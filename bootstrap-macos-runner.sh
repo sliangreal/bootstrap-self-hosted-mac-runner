@@ -245,6 +245,12 @@ sudo xcodebuild -license accept
 log "Installing Xcode ${ADDITIONAL_XCODE_VERSION} first-launch system packages..."
 sudo xcodebuild -runFirstLaunch
 
+# Kill stale CoreSimulatorService — switching Xcode versions causes a framework
+# version mismatch (e.g. 1048 vs 1010.15) that makes simctl/runtime downloads fail.
+log "Resetting CoreSimulatorService after Xcode version switch..."
+sudo killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+sleep 2
+
 # --- Simulator runtime for additional Xcode ---
 log "Ensuring simulator runtime '${ADDITIONAL_IOS_SIM_RUNTIME_NAME}' for Xcode ${ADDITIONAL_XCODE_VERSION}..."
 
@@ -258,8 +264,16 @@ get_additional_runtime_id() {
 additional_runtime_id="$(get_additional_runtime_id)"
 
 if [[ -z "${additional_runtime_id}" ]]; then
-  log "Runtime '${ADDITIONAL_IOS_SIM_RUNTIME_NAME}' not found — attempting install via xcodes..."
-  if command_exists xcodes; then
+  # Primary method: xcodebuild -downloadPlatform (Apple's native approach, Xcode 15+)
+  log "Runtime '${ADDITIONAL_IOS_SIM_RUNTIME_NAME}' not found — downloading via xcodebuild..."
+  set +e
+  xcodebuild -downloadPlatform iOS
+  set -e
+  additional_runtime_id="$(get_additional_runtime_id)"
+
+  # Fallback: xcodes runtimes install
+  if [[ -z "${additional_runtime_id}" ]] && command_exists xcodes; then
+    log "xcodebuild download did not work — falling back to xcodes..."
     set +e
     xcodes runtimes install "${ADDITIONAL_IOS_SIM_RUNTIME_NAME}"
     set -e
