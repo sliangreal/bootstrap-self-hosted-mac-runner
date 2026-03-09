@@ -21,7 +21,7 @@ IOS_RUNTIME_DMG_PATH="${IOS_RUNTIME_DMG_PATH:-}"
 
 # Additional Xcode (installed alongside the default, NOT selected as default)
 ADDITIONAL_XCODE_VERSION="26.0"
-ADDITIONAL_IOS_SIM_RUNTIME_NAME="iOS 26.2"
+ADDITIONAL_IOS_SIM_RUNTIME_NAME="iOS 26.0"
 ADDITIONAL_SIM_DEVICE_TYPE="iPhone 17 Pro"
 
 # ==================================================
@@ -284,7 +284,7 @@ fi
 if [[ -n "${additional_runtime_id}" ]]; then
   log "Additional runtime OK: ${additional_runtime_id}"
 
-  # Ensure a simulator device exists for the additional runtime
+  # Warm up a simulator for the additional Xcode
   set +eo pipefail
   additional_udid="$(xcrun simctl list devices \
     | grep "${ADDITIONAL_SIM_DEVICE_TYPE}" \
@@ -292,19 +292,14 @@ if [[ -n "${additional_runtime_id}" ]]; then
     | head -n1)"
   set -eo pipefail
 
-  if [[ -z "${additional_udid}" ]]; then
-    log "No ${ADDITIONAL_SIM_DEVICE_TYPE} device found — creating one..."
-    additional_udid="$(xcrun simctl create "${ADDITIONAL_SIM_DEVICE_TYPE}" \
-      "${ADDITIONAL_SIM_DEVICE_TYPE}" "${additional_runtime_id}")"
-    log "Created simulator: ${ADDITIONAL_SIM_DEVICE_TYPE} (${additional_udid})"
-  fi
-
   if [[ -n "${additional_udid}" ]]; then
     log "Warming up Xcode ${ADDITIONAL_XCODE_VERSION} simulator: ${ADDITIONAL_SIM_DEVICE_TYPE} (${additional_udid})..."
     xcrun simctl boot "${additional_udid}" || true
     xcrun simctl bootstatus "${additional_udid}" -b
     xcrun simctl shutdown "${additional_udid}" || true
     log "Additional simulator ready: ${additional_udid}"
+  else
+    log "Warning: No ${ADDITIONAL_SIM_DEVICE_TYPE} simulator found for ${ADDITIONAL_IOS_SIM_RUNTIME_NAME}"
   fi
 else
   log "Warning: Runtime '${ADDITIONAL_IOS_SIM_RUNTIME_NAME}' could not be installed. Install it manually via Xcode > Settings > Platforms."
