@@ -8,7 +8,7 @@ If Xcode is not already installed, the script uses [xcodes](https://github.com/X
 
 ```bash
 export XCODE_APPLE_ID="your@apple.id"
-export XCODE_APPLE_ID_PASSWORD="your-apple-id-password"
+export XCODE_APPLE_ID_PASSWORD="your-apple-id-password"  # your regular Apple ID password
 ```
 
 If Xcode is already installed at the required version, these variables are not needed.
